@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECO.CONTROL - Analytics</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .nature-bg {
+            background: linear-gradient(45deg, #1b4332, #2d6a4f);
+            background-size: 400% 400%;
+            animation: gradient 15s ease infinite;
+        }
+
+        .eco-card {
+            background: rgba(16, 32, 16, 0.7);
+            border: 1px solid rgba(144, 238, 144, 0.1);
+            box-shadow: 0 0 15px rgba(144, 238, 144, 0.1);
+        }
+
+        .eco-text {
+            text-shadow: 0 0 10px rgba(144, 238, 144, 0.3);
+        }
+    </style>
+</head>
+<body class="nature-bg min-h-screen text-emerald-100">
+    <!-- Header avec navigation -->
+    <header class="fixed top-0 left-0 right-0 bg-emerald-900/50 backdrop-blur-md z-50">
+        <div class="container mx-auto px-6 py-4">
+            <div class="flex justify-between items-center">
+                <h1 class="text-3xl font-bold eco-text">ECO.CONTROL</h1>
+                <nav class="flex space-x-6">
+                    <a href="accueil.html" class="text-emerald-300 hover:text-emerald-400 transition-colors">
+                        ← Retour
+                    </a>
+                </nav>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="pt-24 px-6 pb-6">
+        <div class="container mx-auto">
+            <!-- Contrôles -->
+            <div class="eco-card rounded-xl p-6 mb-8">
+                <div class="flex flex-wrap items-center justify-between gap-4">
+                    <h2 class="text-2xl font-semibold eco-text">Analyse des Données</h2>
+                    <div class="flex items-center space-x-4">
+                        <input type="number" 
+                               id="valueInput" 
+                               placeholder="Valeur" 
+                               min="1"
+                               class="bg-emerald-900/30 text-emerald-100 placeholder-emerald-300/50 px-4 py-2 rounded-lg 
+                                      focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                        <select id="unitSelect"
+                                class="bg-emerald-900/30 text-emerald-100 px-4 py-2 rounded-lg 
+                                       focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                            <option value="m">Minutes</option>
+                            <option value="h">Heures</option>
+                            <option value="d">Jours</option>
+                            <option value="mo">Mois</option>
+                            <option value="y">Années</option>
+                        </select>
+                        <button onclick="sendAPIRequest()" 
+                                class="bg-emerald-600 text-white px-6 py-2 rounded-lg 
+                                       hover:bg-emerald-500 transition-all">
+                            Actualiser
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Graphiques -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <div class="eco-card rounded-xl p-6">
+                    <h3 class="text-xl font-semibold mb-4 eco-text">Humidité</h3>
+                    <div class="relative h-[300px]">
+                        <canvas id="humidityChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="eco-card rounded-xl p-6">
+                    <h3 class="text-xl font-semibold mb-4 eco-text">Débit</h3>
+                    <div class="relative h-[300px]">
+                        <canvas id="flowRateChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <div class="eco-card rounded-xl p-6">
+                <h3 class="text-xl font-semibold mb-4 eco-text">Niveau d'Eau</h3>
+                <div class="relative h-[300px]">
+                    <canvas id="waterLevelChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // Configuration des graphiques avec le nouveau thème
+        const chartConfig = {
+            type: 'line',
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: {
+                            color: '#6ee7b7' // emerald-300
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: {
+                            color: 'rgba(110, 231, 183, 0.1)' // emerald-300 avec opacité
+                        },
+                        ticks: {
+                            color: '#6ee7b7' // emerald-300
+                        }
+                    },
+                    y: {
+                        grid: {
+                            color: 'rgba(110, 231, 183, 0.1)'
+                        },
+                        ticks: {
+                            color: '#6ee7b7'
+                        }
+                    }
+                }
+            }
+        };
+
+        // Création des graphiques avec le nouveau style
+        function createEmptyChart(ctx, title) {
+            return new Chart(ctx, {
+                ...chartConfig,
+                data: {
+                    labels: [],
+                    datasets: [{
+                        label: title,
+                        data: [],
+                        borderColor: getChartColor(title),
+                        backgroundColor: getChartColor(title, 0.2),
+                        fill: true
+                    }]
+                }
+            });
+        }
+
+        function getChartColor(title, alpha = 1) {
+            const colors = {
+                'Humidité': `rgba(129, 140, 248, ${alpha})`,
+                'Débit': `rgba(52, 211, 153, ${alpha})`,
+                'Niveau d\'eau': `rgba(167, 139, 250, ${alpha})`
+            };
+            return colors[title] || `rgba(255, 255, 255, ${alpha})`;
+        }
+
+        // Initialisation des graphiques
+        const ctxHumidity = document.getElementById('humidityChart').getContext('2d');
+        const ctxFlowRate = document.getElementById('flowRateChart').getContext('2d');
+        const ctxWaterLevel = document.getElementById('waterLevelChart').getContext('2d');
+
+        const humidityChart = createEmptyChart(ctxHumidity, 'Humidité');
+        const flowRateChart = createEmptyChart(ctxFlowRate, 'Débit');
+        const waterLevelChart = createEmptyChart(ctxWaterLevel, 'Niveau d\'eau');
+
+        // Fonction pour envoyer la requête API
+        function sendAPIRequest() {
+            const value = document.getElementById('valueInput').value;
+            const unit = document.getElementById('unitSelect').value;
+
+            if (value && unit) {
+                const data = {
+                    duree: [value],  // La valeur entrée par l'utilisateur
+                    unite: [unit]    // L'unité sélectionnée
+                };
+                console.log('Requête envoyée à l\'API:', data);
+
+                // Récupérer le token du localStorage
+                const token = localStorage.getItem('token'); // Assurez-vous que le token est stocké dans le localStorage
+
+                if (!token) {
+                    alert("Token manquant. Veuillez vous connecter à nouveau.");
+                    window.location.href = "login.html"; // Redirige vers la page de connexion si le token est manquant
+                    return;
+                }
+
+                // Envoi de la requête à l'API avec le token dans l'en-tête Authorization
+                fetch('http://localhost:3005/bdd', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,  // En-tête d'autorisation avec le token
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                })
+                .then(response => response.json())
+                .then(apiData => {
+                    console.log('Réponse de l\'API:', apiData);
+                    // Vérifier s'il y a des données ou si le message d'absence de données est renvoyé
+                    if (apiData === "Aucune données depuis 3m") {
+                        // Afficher un message d'erreur et ne pas mettre à jour les graphiques
+                        document.getElementById('errorMessage').style.display = 'block';
+                        return;
+                    }
+
+                    // Traiter la réponse et mettre à jour les graphiques
+                    updateCharts(apiData);
+                    document.getElementById('errorMessage').style.display = 'none'; // Cacher le message d'erreur s'il y a des données
+                })
+                .catch(error => {
+                    console.error('Erreur lors de la requête API:', error);
+                    document.getElementById('errorMessage').style.display = 'block'; // Afficher le message d'erreur en cas de problème
+                });
+            } else {
+                alert('Veuillez entrer une valeur et sélectionner une unité.');
+            }
+        }
+
+        // Fonction pour traiter et organiser les données par capteur et date
+        function processData(apiData) {
+            let humidityData = [];
+            let flowRateData = [];
+            let waterLevelData = [];
+            let labels = [];
+
+            // Parcourir les données API et trier par capteur et date
+            apiData.forEach(item => {
+                const timestamp = new Date(item._time).toLocaleTimeString(); // Extraire l'heure de la date
+                if (!labels.includes(timestamp)) {
+                    labels.push(timestamp);  // Ajouter l'heure comme label
+                }
+
+                // Tri des données en fonction des capteurs
+                if (item._field === "Humidité") {
+                    humidityData.push(item._value);
+                } else if (item._field === "Débit") {
+                    flowRateData.push(item._value);
+                } else if (item._field === "Niveau d'eau") {
+                    waterLevelData.push(item._value);
+                }
+            });
+
+            return { labels, humidityData, flowRateData, waterLevelData };
+        }
+
+        // Fonction pour mettre à jour les graphiques avec les nouvelles données
+        function updateCharts(data) {
+            const processedData = processData(data);
+
+            const charts = [
+                { chart: humidityChart, data: processedData.humidityData },
+                { chart: flowRateChart, data: processedData.flowRateData },
+                { chart: waterLevelChart, data: processedData.waterLevelData }
+            ];
+
+            charts.forEach(({chart, data}) => {
+                chart.data.labels = processedData.labels;
+                chart.data.datasets[0].data = data;
+                chart.update('show');
+            });
+        }
+
+        // Exemple de stockage du token (simulation d'un token d'authentification)
+        // Normalement, ce code est exécuté lors de la connexion
+        localStorage.setItem('token', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1dGlsaXNhdGV1ciI6InBheWV0Iiwicm9sZSI6Ik5ld3RvbkNpZWw5MkFJQDIwMjUhIiwiaWF0IjoxNzM4NjU0NTE4LCJleHAiOjE3Mzg2NTgxMTh9.95Yed7YjKzW8uXnncY3fo4Tk13-U23muORzdQXFtaNA');
+    </script>
+</body>
+</html>
