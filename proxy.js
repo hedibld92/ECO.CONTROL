@@ -2,7 +2,7 @@
 const WebSocket = require('ws');
 
 // Configuration du serveur WebSocket local
-const wss = new WebSocket.Server({
+const wsServer = new WebSocket.Server({
     port: 3007,
     // Ajouter ces options
     handleProtocols: () => 'websocket',
@@ -11,76 +11,84 @@ const wss = new WebSocket.Server({
 });
 
 // URL de l'API WebSocket distante
-const remoteWebSocketUrl = 'ws://localhost:3006';
-const token = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1dGlsaXNhdGV1ciI6InBheWV0Iiwicm9sZSI6Ik5ld3RvbkNpZWw5MkFJQDIwMjUhIiwiaWF0IjoxNzM4NjU0NTE4LCJleHAiOjE3Mzg2NTgxMTh9.95Yed7YjKzW8uXnncY3fo4Tk13-U23muORzdQXFtaNA';
+const remoteEndpoint = 'ws://localhost:3006';
+const accessToken = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyIjoiZ3JlZW5tb25pdG9yIiwicm9sZSI6ImVudmlyb25tZW50YWxfbW9uaXRvciIsImlhdCI6MTcwMDAwMDAwMCwiZXhwIjoxNzAwMDEwMDAwfQ.YOUR_SIGNATURE_HERE';
 
-wss.on('connection', (ws, req) => {
-    console.log('Client connecté au proxy WebSocket');
-    console.log('Headers de la requête:', req.headers);
-
-    try {
-        const remoteSocket = new WebSocket(remoteWebSocketUrl, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Upgrade': 'websocket',
-                'Connection': 'Upgrade'
-            },
-            rejectUnauthorized: false,
-            perMessageDeflate: false,
-            followRedirects: true
-        });
-
-        remoteSocket.on('upgrade', () => {
-            console.log('Connexion en cours de mise à niveau');
-        });
-
-        remoteSocket.on('open', () => {
-            console.log('Connexion établie avec le serveur distant');
-            // Envoyer un message de test
-            remoteSocket.send(JSON.stringify({ type: 'test', message: 'Connection test' }));
-        });
-
-        remoteSocket.on('error', (error) => {
-            console.error('Erreur de connexion:', error.message);
-        });
-
-        ws.on('message', (message) => {
-            if (remoteSocket.readyState === WebSocket.OPEN) {
-                console.log('Message reçu du client local:', message.toString());
-                remoteSocket.send(message);
-            }
-        });
-
-        remoteSocket.on('message', (message) => {
-            if (ws.readyState === WebSocket.OPEN) {
-                console.log('Message reçu du serveur distant:', message.toString());
-                ws.send(message);
-            }
-        });
-
-        ws.on('close', () => {
-            console.log('Connexion WebSocket avec le client local fermée');
-            if (remoteSocket.readyState === WebSocket.OPEN) {
-                remoteSocket.close();
-            }
-        });
-
-        remoteSocket.on('close', () => {
-            console.log('Connexion WebSocket avec le serveur distant fermée');
-            if (ws.readyState === WebSocket.OPEN) {
-                ws.close();
-            }
-        });
-
-    } catch (error) {
-        console.error('Erreur lors de la création de la connexion distante:', error);
-        ws.close();
+class WebSocketHandler {
+    constructor(clientWs, req) {
+        this.clientWs = clientWs;
+        this.req = req;
+        this.initializeConnection();
     }
+
+    initializeConnection() {
+        try {
+            this.remoteWs = new WebSocket(remoteEndpoint, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`,
+                    'Upgrade': 'websocket',
+                    'Connection': 'Upgrade'
+                },
+                rejectUnauthorized: false,
+                perMessageDeflate: false,
+                followRedirects: true
+            });
+
+            this.setupEventHandlers();
+        } catch (error) {
+            console.error('Erreur de connexion:', error);
+            this.clientWs.close();
+        }
+    }
+
+    setupEventHandlers() {
+        this.remoteWs.on('open', () => {
+            console.log('Connexion établie avec le serveur distant');
+            this.remoteWs.send(JSON.stringify({ type: 'init', message: 'Connection initialized' }));
+        });
+
+        this.clientWs.on('message', (message) => {
+            if (this.remoteWs.readyState === WebSocket.OPEN) {
+                console.log('Message client:', message.toString());
+                this.remoteWs.send(message);
+            }
+        });
+
+        this.remoteWs.on('message', (message) => {
+            if (this.clientWs.readyState === WebSocket.OPEN) {
+                console.log('Message serveur:', message.toString());
+                this.clientWs.send(message);
+            }
+        });
+
+        this.setupCloseHandlers();
+    }
+
+    setupCloseHandlers() {
+        this.clientWs.on('close', () => {
+            console.log('Client déconnecté');
+            if (this.remoteWs.readyState === WebSocket.OPEN) {
+                this.remoteWs.close();
+            }
+        });
+
+        this.remoteWs.on('close', () => {
+            console.log('Serveur distant déconnecté');
+            if (this.clientWs.readyState === WebSocket.OPEN) {
+                this.clientWs.close();
+            }
+        });
+    }
+}
+
+wsServer.on('connection', (ws, req) => {
+    console.log('Nouvelle connexion client');
+    new WebSocketHandler(ws, req);
 });
 
 // Gestion des erreurs du serveur
-wss.on('error', (error) => {
-    console.error('Erreur du serveur WebSocket:', error);
+wsServer.on('error', (error) => {
+    console.error('Erreur serveur:', error);
 });
 
-console.log('Serveur proxy WebSocket en écoute sur ws://localhost:3007');
+console.log('Serveur proxy démarré sur ws://localhost:3007');
